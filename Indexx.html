@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Prime Judge — 4~6桁素数チャレンジ</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding-top: 60px; background:#fafafa; color:#222; }
+    #numberDisplay { font-size: 48px; margin: 20px 0; font-weight:700; }
+    button { font-size: 20px; padding: 12px 28px; margin: 12px; border-radius:8px; border:none; cursor:pointer; }
+    #primeBtn { background:#4caf50; color:white; }
+    #notPrimeBtn { background:#f44336; color:white; }
+    #feedback { font-size: 28px; margin-top: 16px; height:36px; }
+    #final { font-size: 26px; margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <h1>Prime Judge</h1>
+  <div id="numberDisplay">---</div>
+  <div id="buttonsDiv">
+    <button id="primeBtn">素数</button>
+    <button id="notPrimeBtn">素数じゃない</button>
+  </div>
+  <div id="feedback"></div>
+  <div id="final"></div>
+
+  <script>
+    // --- 設定 ---
+    const SCRIPT_URL = "ここにApp ScriptデプロイURLを貼る";
+    const TOTAL_QUESTIONS = 10;
+    const ANSWER_TIME_MS = 1500; // 回答制限 1.5秒
+    const FEEDBACK_MS = 700;     // 正解表示時間 0.7秒
+    const MIN_DIGITS = 4;
+    const MAX_DIGITS = 6;
+
+    let questions = [];
+    let qIndex = 0;
+    let correctCount = 0;
+    let timerId = null;
+    let answered = false;
+    let results = []; // メール送信用に記録
+
+    // 素数判定
+    function isPrime(n){
+      if (n < 2) return false;
+      const r = Math.floor(Math.sqrt(n));
+      for (let i=2;i<=r;i++){
+        if (n % i === 0) return false;
+      }
+      return true;
+    }
+
+    // 4〜6桁の奇数生成
+    function genRandomOdd(){
+      const digits = Math.floor(Math.random()*(MAX_DIGITS-MIN_DIGITS+1))+MIN_DIGITS;
+      const min = Math.pow(10,digits-1);
+      const max = Math.pow(10,digits)-1;
+      let n;
+      do {
+        n = Math.floor(Math.random()*(max-min+1))+min;
+      } while(n % 2 === 0); // 偶数は出さない
+      return n;
+    }
+
+    // 質問作成（素数4〜6個）
+    function createQuestions(){
+      let primes=[], nonPrimes=[];
+      while(primes.length<4){
+        let n = genRandomOdd();
+        if(isPrime(n) && !primes.includes(n)) primes.push(n);
+      }
+      const extraPrimes = Math.floor(Math.random()*3); // 0〜2個
+      while(primes.length < 4+extraPrimes){
+        let n = genRandomOdd();
+        if(isPrime(n) && !primes.includes(n)) primes.push(n);
+      }
+      while(primes.length+nonPrimes.length<TOTAL_QUESTIONS){
+        let n = genRandomOdd();
+        if(!isPrime(n) && !nonPrimes.includes(n)) nonPrimes.push(n);
+      }
+      questions = primes.concat(nonPrimes).map(n=>({number:n,isPrime:isPrime(n)}));
+      // シャッフル
+      for(let i=questions.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [questions[i],questions[j]]=[questions[j],questions[i]];
+      }
+    }
+
+    // 次の問題
+    function showNext(){
+      document.getElementById("feedback").textContent="";
+      if(qIndex>=TOTAL_QUESTIONS){
+        document.getElementById("numberDisplay").textContent="---";
+        document.getElementById("final").textContent=`10問中 ${correctCount}問 正解！`;
+
+        // ボタンを消す
+        document.getElementById("buttonsDiv").style.display="none";
+
+        // メール送信
+        sendResultsByEmail();
+        return;
+      }
+      answered=false;
+      const q=questions[qIndex];
+      document.getElementById("numberDisplay").textContent=q.number;
+
+      timerId = setTimeout(()=>{
+        if(!answered) sendAnswer(false,true); // タイムアウト=不正解
+      }, ANSWER_TIME_MS);
+    }
+
+    // 回答処理
+    function sendAnswer(playerAnswer, timeout=false){
+      if(timerId){clearTimeout(timerId);timerId=null;}
+      if(answered && !timeout) return;
+      answered=true;
+      const q=questions[qIndex];
+      const correct=q.isPrime===playerAnswer;
+      if(correct) correctCount++;
+      document.getElementById("feedback").textContent=correct?"正解":"不正解";
+
+      // 記録
+      results.push({
+        questionIndex:qIndex+1,
+        number:q.number,
+        isPrime:q.isPrime,
+        playerAnswer:playerAnswer,
+        resultText:correct?"Correct":"Wrong"
+      });
+
+      setTimeout(()=>{
+        qIndex++;
+        showNext();
+      }, FEEDBACK_MS);
+    }
+
+    // メール送信
+    async function sendResultsByEmail(){
+      try {
+        await fetch(SCRIPT_URL,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(results)
+        });
+      } catch(err){
+        console.warn("送信失敗:",err);
+      }
+    }
+
+    // ボタン
+    document.getElementById("primeBtn").addEventListener("click",()=>sendAnswer(true));
+    document.getElementById("notPrimeBtn").addEventListener("click",()=>sendAnswer(false));
+
+    // 初期化
+    createQuestions();
+    showNext();
+  </script>
+</body>
+</html>
